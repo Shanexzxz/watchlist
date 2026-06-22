@@ -1,0 +1,1966 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Watch List — PC 端</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,"Helvetica Neue",Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#000;background:#f5f6f7}
+
+.topbar{background:#fff;border-bottom:1px solid #d9d9d9;height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:100}
+.topbar .logo{font-size:18px;font-weight:bold;color:#185FA5;letter-spacing:-0.3px}
+.topbar .user-area{display:flex;align-items:center;gap:12px;font-size:12px;color:#555}
+.topbar .user-avatar{width:28px;height:28px;border-radius:50%;background:#185FA5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold}
+.topbar .user-name{font-weight:600;color:#333}
+.topbar .user-perm{font-size:11px;color:#888;background:#f0f0f0;padding:2px 8px;border-radius:3px}
+
+.tab-bar{background:#fff;border-bottom:1px solid #d9d9d9;display:flex;align-items:center;padding:0 24px;overflow-x:auto;flex-shrink:0}
+.tab-bar::-webkit-scrollbar{height:0}
+.tab-item{padding:12px 18px;font-size:13px;color:#666;cursor:pointer;border:none;background:none;position:relative;white-space:nowrap;transition:color .15s}
+.tab-item:hover{color:#185FA5}
+.tab-item.active{color:#185FA5;font-weight:600}
+.tab-item.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:#185FA5}
+
+.toolbar{background:#fff;padding:10px 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e8e8e8;flex-wrap:wrap}
+.toolbar .date-label{font-size:12px;color:#666;margin-left:auto}
+
+.main{max-width:1400px;margin:0 auto;padding:20px 24px 40px}
+
+.page-title{font-size:18px;font-weight:bold;margin-bottom:6px;color:#000}
+.page-note{font-size:11px;color:#888;font-style:italic;margin-bottom:14px}
+.bullets{margin-bottom:18px;padding-left:0}
+.bullets li{list-style:none;margin-bottom:3px;color:#333;line-height:1.5;font-size:12px}
+.bullets li::before{content:"\2022 ";color:#333}
+.bullets strong{color:#000;font-weight:bold}
+
+table{width:100%;border-collapse:collapse;margin-bottom:0;font-size:11px;table-layout:fixed}
+th{background:#e8e8e8;font-weight:bold;padding:6px 4px;text-align:right;vertical-align:bottom;border-bottom:1px solid #000;line-height:1.3;white-space:nowrap}
+th:first-child{text-align:left}
+td{padding:5px 4px;text-align:right;border-bottom:1px solid #000;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td:first-child{text-align:left;font-weight:500}
+tbody tr:nth-child(odd){background:#fff}
+tbody tr:nth-child(even){background:#C6D9F1}
+.up{color:#006400;font-weight:500}
+.down{color:#c00;font-weight:500}
+.na{color:#999}
+.section-gap{margin-top:18px}
+.tpp-mark{color:#B8860B;font-weight:bold;margin-left:2px;font-size:12px}
+
+.footnotes{margin-top:18px;padding-top:10px;border-top:1px solid #ccc;font-size:11px;color:#000;line-height:1.7}
+.footnotes .source{margin-bottom:6px}
+.footnotes .source strong{font-weight:bold}
+.footnotes ol{margin:0;padding-left:18px}
+.footnotes ol li{margin-bottom:3px;text-align:left}
+.footnotes .tpp{color:#B8860B;font-weight:bold}
+
+.empty-state{text-align:center;padding:60px 20px;color:#aaa}
+.empty-state .empty-icon{font-size:40px;margin-bottom:12px;opacity:.4}
+.empty-state p{font-size:13px;color:#999}
+.empty-state .empty-sub{font-size:11px;color:#bbb;margin-top:4px}
+
+@media(max-width:1100px){
+  .main{padding:16px 16px 32px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Watch List</div>
+  <div class="user-area">
+    <span class="user-perm" id="permBadge">可访问 1/8 组</span>
+    <span class="user-name">Shayn</span>
+    <div class="user-avatar">S</div>
+  </div>
+</div>
+
+<div class="tab-bar" id="tabBar"></div>
+
+<div class="toolbar">
+  <span class="date-label" id="dateLabel">Jun 12, 2026 (T-1)</span>
+</div>
+
+<div class="main" id="mainContent"></div>
+
+<script>
+/*
+ * 架构说明：各组列配置独立
+ * ─────────────────────────────
+ * 每个行业组的数据对象（如 financeData）包含自己的列配置：
+ *   - indexColgroup:  指数表列宽数组
+ *   - industryColgroup: 行业表列宽数组
+ *   - indexTable.header / tables[].header: 列标题
+ *
+ * 修改某个组的列配置（增删列、改列宽、改表头）只影响该组，
+ * 不会影响其他组。新增组数据时，按需定义自己的列配置即可。
+ *
+ * 例如：消费零售组想去掉 Change 列，只需在其数据对象中
+ * 从 industryColgroup 和各 table.header 中移除对应项即可，
+ * 内容金融组不受影响。
+ */
+
+const GROUPS = [
+  { id: 'finance',       name: '内容金融组',     hasData: true,  industries: ['指数','电子银行和钱包','信贷','券商和交易所','支付','金融软件/服务商','保险','电商金融平台','加密货币','内容娱乐'] },
+  { id: 'retail',        name: '消费零售组',     hasData: false, industries: ['电商平台','品牌服装','餐饮连锁','超市零售','美妆个护','母婴儿童','家居家具','线下零售'] },
+  { id: 'ai',            name: '智能应用投资组',  hasData: false, industries: ['AI大模型','AI应用','智能驾驶','机器人','智能硬件','云计算服务'] },
+  { id: 'portfolio',     name: '投资组合管理组',  hasData: false, industries: ['跨组核心持仓','战略配置','新兴标的'] },
+  { id: 'overseas',      name: '海外投资组',     hasData: false, industries: ['美股科技','港股互联网','日韩消费','东南亚科技','欧洲品牌','新兴市场'] },
+  { id: 'healthcare',    name: '医疗健康组',     hasData: false, industries: ['创新药','医疗器械','CXO','医疗服务','数字医疗','生物技术'] },
+  { id: 'entertainment',  name: '全球娱乐组',     hasData: false, industries: ['流媒体','游戏公司','影视制作','音乐','主题公园','体育'] },
+  { id: 'tech',          name: '技术企业组',     hasData: false, industries: ['半导体','企业软件','网络安全','云计算','物联网','通信设备'] },
+];
+
+const financeData = {
+  "title": "【内容金融组】Watch list on Jun 12, 2026",
+  "note": "",
+  "bullets": [
+    "<strong>Market cap over USD10 billion (rose or declined &gt;5%):</strong> Naver (-8%), AppLovin (-8%), ServiceNow (-6%), MiniMax (-9%), Zhipu AI (-14%)",
+    "<strong>Market cap under USD10 billion (rose or declined &gt;10%):</strong> Shift Up (+10%)",
+    "<strong>Upcoming Earnings (HKT):</strong> June 11 (Thu): Oracle"
+  ],
+  "industries": [
+    "指数",
+    "电子银行和钱包",
+    "信贷",
+    "券商和交易所",
+    "支付",
+    "金融软件/服务商",
+    "保险",
+    "电商金融平台",
+    "加密货币",
+    "内容娱乐"
+  ],
+  // === 该组的列配置（各组独立，互不影响）===
+  // 指数表和行业表共享同一组列宽，指数表最后3列留白
+  "indexColgroup": ["118px","88px","55px","72px","55px","55px","55px","55px","55px","62px","55px","55px"],
+  "industryColgroup": ["118px","88px","55px","72px","55px","55px","55px","55px","55px","62px","55px","55px"],
+
+  "indexTable": {
+    "header": [
+      "指数",
+      "12-Jun",
+      "Change",
+      "Turnover<br>(USD'000)",
+      "Adj. P/E<br>(2026E)",
+      "Mkt Cap<br>(USD M)",
+      "Price Change<br>(YTD)",
+      "Price Change<br>(L30D)",
+      "Price Change<br>(L365D)",
+      "",
+      "",
+      ""
+    ],
+    "rows": [
+      [
+        "Indxx Global FinTech Thematic Index",
+        "-",
+        "-",
+        "-",
+        "-",
+        "-",
+        "+0%",
+        "+0%",
+        "+0%",
+        "",
+        "",
+        ""
+      ],
+      [
+        "Solactive Global FinTech Index",
+        "-",
+        "-",
+        "-",
+        "-",
+        "-",
+        "+0%",
+        "+0%",
+        "+0%",
+        "",
+        "",
+        ""
+      ],
+      [
+        "KBW Nasdaq Financial Technology Index",
+        "-",
+        "-",
+        "-",
+        "-",
+        "-",
+        "+0%",
+        "+0%",
+        "+0%",
+        "",
+        "",
+        ""
+      ],
+      [
+        "NASDAQ Crypto Index",
+        "-",
+        "-",
+        "-",
+        "-",
+        "-",
+        "+0%",
+        "+0%",
+        "+0%",
+        "",
+        "",
+        ""
+      ]
+    ]
+  },
+  "tables": [
+    {
+      "name": "电子银行和钱包",
+      "isIndex": false,
+      "header": [
+        "电子银行和钱包",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Nubank",
+          "USD 12.19",
+          "+0.8%",
+          "4,153,104",
+          "-",
+          "-",
+          "+8%",
+          "+1%",
+          "+6%",
+          "190.87",
+          "7.86x",
+          "Y"
+        ],
+        [
+          "Rakuten Bank",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "174.51",
+          "1.76x",
+          "Y"
+        ],
+        [
+          "Kakao Bank",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "PayPay",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Chime",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Block",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Wise",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Remitly",
+          "USD 19.08",
+          "+1.5%",
+          "762,719",
+          "-",
+          "-",
+          "+11%",
+          "+2%",
+          "+12%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Kakao Pay",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "PicPay",
+          "USD 23.45",
+          "-1.2%",
+          "36,000",
+          "-",
+          "-",
+          "+0%",
+          "-2%",
+          "-10%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Banco Inter",
+          "USD 5.77",
+          "+1.1%",
+          "128,918",
+          "-",
+          "-",
+          "+9%",
+          "+2%",
+          "+9%",
+          "-",
+          "-",
+          "-"
+        ]
+      ]
+    },
+    {
+      "name": "信贷",
+      "isIndex": false,
+      "header": [
+        "信贷",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Sofi",
+          "USD 16.58",
+          "-0.5%",
+          "8,337,757",
+          "-",
+          "-",
+          "+3%",
+          "-1%",
+          "-4%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Affirm",
+          "USD 66.17",
+          "-0.5%",
+          "1,988,844",
+          "-",
+          "-",
+          "+3%",
+          "-1%",
+          "-4%",
+          "92.39",
+          "3.46x",
+          "-"
+        ],
+        [
+          "Klarna",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Figure Tech",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Upstart",
+          "USD 30.50",
+          "-4.1%",
+          "1,485,350",
+          "-",
+          "-",
+          "-11%",
+          "-6%",
+          "-33%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Pagaya",
+          "USD 15.42",
+          "-2.1%",
+          "417,640",
+          "-",
+          "-",
+          "-3%",
+          "-3%",
+          "-17%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Rocket Company",
+          "USD 13.07",
+          "-2.7%",
+          "2,690,166",
+          "-",
+          "-",
+          "-6%",
+          "-4%",
+          "-22%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Dave",
+          "USD 286.78",
+          "+0.5%",
+          "2,207,699",
+          "-",
+          "-",
+          "+7%",
+          "+1%",
+          "+4%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Lending Club",
+          "USD 18.05",
+          "-1.0%",
+          "238,068",
+          "-",
+          "-",
+          "+1%",
+          "-2%",
+          "-8%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "联易融<span class=\"tpp-mark\">*</span>",
+          "HKD 2.00",
+          "-1.0%",
+          "448,689",
+          "-",
+          "-",
+          "+1%",
+          "-2%",
+          "-8%",
+          "80.96",
+          "2.15x",
+          "-"
+        ]
+      ]
+    },
+    {
+      "name": "券商和交易所",
+      "isIndex": false,
+      "header": [
+        "券商和交易所",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Schwab",
+          "USD 91.10",
+          "+2.7%",
+          "10,398,162",
+          "-",
+          "-",
+          "+16%",
+          "+4%",
+          "+22%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "IBKR",
+          "USD 90.81",
+          "+2.2%",
+          "3,824,649",
+          "-",
+          "-",
+          "+14%",
+          "+3%",
+          "+18%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "中金",
+          "HKD 19.62",
+          "+6.1%",
+          "54,434,251",
+          "-",
+          "-",
+          "+29%",
+          "+9%",
+          "+49%",
+          "82.35",
+          "1.58x",
+          "-"
+        ],
+        [
+          "Robinhood",
+          "USD 93.19",
+          "+1.0%",
+          "30,869,547",
+          "-",
+          "-",
+          "+9%",
+          "+2%",
+          "+8%",
+          "200.65",
+          "1.77x",
+          "Y"
+        ],
+        [
+          "Futu",
+          "USD 97.54",
+          "+2.1%",
+          "1,846,423",
+          "-",
+          "-",
+          "+13%",
+          "+3%",
+          "+17%",
+          "2,765",
+          "22.47x",
+          "-"
+        ],
+        [
+          "Tiger",
+          "USD 4.77",
+          "-0.6%",
+          "107,135",
+          "-",
+          "-",
+          "+3%",
+          "-1%",
+          "-5%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Webull",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "eToro",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "XP",
+          "USD 16.02",
+          "+2.4%",
+          "1,144,261",
+          "-",
+          "-",
+          "+15%",
+          "+4%",
+          "+19%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "LPL",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "XTB",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Tradeweb",
+          "USD 101.19",
+          "+2.2%",
+          "1,243,748",
+          "-",
+          "-",
+          "+14%",
+          "+3%",
+          "+18%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "MarketAxess",
+          "USD 120.89",
+          "+3.9%",
+          "822,098",
+          "-",
+          "-",
+          "+21%",
+          "+6%",
+          "+31%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "ICE",
+          "USD 140.53",
+          "+1.1%",
+          "4,446,939",
+          "-",
+          "-",
+          "+9%",
+          "+2%",
+          "+9%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "CME",
+          "USD 269.53",
+          "+2.8%",
+          "7,658,098",
+          "-",
+          "-",
+          "+16%",
+          "+4%",
+          "+22%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Nasdaq",
+          "USD 88.98",
+          "+3.0%",
+          "2,519,598",
+          "-",
+          "-",
+          "+17%",
+          "+4%",
+          "+24%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Miami Exchange",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ]
+      ]
+    },
+    {
+      "name": "支付",
+      "isIndex": false,
+      "header": [
+        "支付",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Visa",
+          "USD 322.39",
+          "+1.0%",
+          "17,897,255",
+          "-",
+          "-",
+          "+9%",
+          "+2%",
+          "+8%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "MasterCard",
+          "USD 489.98",
+          "+0.7%",
+          "19,493,517",
+          "-",
+          "-",
+          "+8%",
+          "+1%",
+          "+6%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "PayPal",
+          "USD 41.53",
+          "+0.7%",
+          "5,094,773",
+          "-",
+          "-",
+          "+8%",
+          "+1%",
+          "+6%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Adyen",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Shift4",
+          "USD 41.18",
+          "+4.4%",
+          "861,332",
+          "-",
+          "-",
+          "+23%",
+          "+7%",
+          "+35%",
+          "43.88",
+          "0.48x",
+          "-"
+        ],
+        [
+          "Toast",
+          "USD 24.82",
+          "+0.5%",
+          "1,600,360",
+          "-",
+          "-",
+          "+7%",
+          "+1%",
+          "+4%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Fiserv",
+          "USD 135.50",
+          "-1.2%",
+          "4,800,000",
+          "-",
+          "-",
+          "+0%",
+          "-2%",
+          "-10%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Marqeta",
+          "USD 3.83",
+          "+1.3%",
+          "284,979",
+          "-",
+          "-",
+          "+10%",
+          "+2%",
+          "+10%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "dLocal",
+          "USD 12.25",
+          "-0.7%",
+          "157,772",
+          "-",
+          "-",
+          "+2%",
+          "-1%",
+          "-6%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "GMO Payment Gateway",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Stone",
+          "USD 11.26",
+          "+0.1%",
+          "382,246",
+          "-",
+          "-",
+          "+5%",
+          "+0%",
+          "+1%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "PagSeguro",
+          "USD 8.96",
+          "+0.2%",
+          "222,395",
+          "-",
+          "-",
+          "+6%",
+          "+0%",
+          "+2%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Corpay",
+          "USD 356.11",
+          "+1.5%",
+          "1,456,219",
+          "-",
+          "-",
+          "+11%",
+          "+2%",
+          "+12%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Global Payment",
+          "USD 67.71",
+          "+3.9%",
+          "2,821,896",
+          "-",
+          "-",
+          "+21%",
+          "+6%",
+          "+31%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Paymentus",
+          "USD 21.12",
+          "+2.1%",
+          "152,893",
+          "-",
+          "-",
+          "+13%",
+          "+3%",
+          "+17%",
+          "-",
+          "-",
+          "-"
+        ]
+      ]
+    },
+    {
+      "name": "金融软件/服务商",
+      "isIndex": false,
+      "header": [
+        "金融软件/服务商",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Q2 Holdings",
+          "USD 43.89",
+          "+1.3%",
+          "201,820",
+          "-",
+          "-",
+          "+10%",
+          "+2%",
+          "+10%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "nCino",
+          "USD 15.32",
+          "+3.9%",
+          "396,754",
+          "-",
+          "-",
+          "+21%",
+          "+6%",
+          "+31%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Navan",
+          "USD 19.93",
+          "-11.9%",
+          "1,862,232",
+          "-",
+          "-",
+          "-43%",
+          "-18%",
+          "-95%",
+          "71.98",
+          "1.44x",
+          "Y"
+        ],
+        [
+          "Clearwater",
+          "USD 24.33",
+          "-0.3%",
+          "1,513,438",
+          "-",
+          "-",
+          "+4%",
+          "+0%",
+          "-2%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Bill.com",
+          "USD 33.18",
+          "+3.3%",
+          "893,190",
+          "-",
+          "-",
+          "+18%",
+          "+5%",
+          "+26%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Intuit",
+          "USD 276.73",
+          "-0.1%",
+          "14,059,566",
+          "-",
+          "-",
+          "+5%",
+          "+0%",
+          "-1%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Fico",
+          "USD 1,179.19",
+          "-0.5%",
+          "3,403,094",
+          "-",
+          "-",
+          "+3%",
+          "-1%",
+          "-4%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "S&P",
+          "USD 418.91",
+          "+1.3%",
+          "7,358,841",
+          "-",
+          "-",
+          "+10%",
+          "+2%",
+          "+10%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Moody's",
+          "USD 447.85",
+          "+1.4%",
+          "3,000,470",
+          "-",
+          "-",
+          "+11%",
+          "+2%",
+          "+11%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "MSCI",
+          "USD 599.12",
+          "+0.8%",
+          "2,332,436",
+          "-",
+          "-",
+          "+8%",
+          "+1%",
+          "+6%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Factset",
+          "USD 241.16",
+          "+1.9%",
+          "4,962,490",
+          "-",
+          "-",
+          "+13%",
+          "+3%",
+          "+15%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Broadridge",
+          "USD 144.87",
+          "+0.7%",
+          "1,735,493",
+          "-",
+          "-",
+          "+8%",
+          "+1%",
+          "+6%",
+          "-",
+          "-",
+          "-"
+        ]
+      ]
+    },
+    {
+      "name": "保险",
+      "isIndex": false,
+      "header": [
+        "保险",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Oscar Health",
+          "USD 28.26",
+          "-2.2%",
+          "1,637,541",
+          "-",
+          "-",
+          "-4%",
+          "-3%",
+          "-18%",
+          "136.19",
+          "1.75x",
+          "-"
+        ],
+        [
+          "Lemonade",
+          "USD 57.49",
+          "+0.5%",
+          "729,879",
+          "-",
+          "-",
+          "+7%",
+          "+1%",
+          "+4%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Clover Health",
+          "USD 4.73",
+          "-3.5%",
+          "490,419",
+          "-",
+          "-",
+          "-9%",
+          "-5%",
+          "-28%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Root",
+          "USD 54.90",
+          "+0.3%",
+          "111,536",
+          "-",
+          "-",
+          "+6%",
+          "+0%",
+          "+2%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Alignment Healthcare",
+          "USD 19.75",
+          "-2.4%",
+          "875,623",
+          "-",
+          "-",
+          "-5%",
+          "-4%",
+          "-19%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "众安保险",
+          "HKD 10.67",
+          "+0.6%",
+          "32,547,399",
+          "-",
+          "-",
+          "+7%",
+          "+1%",
+          "+5%",
+          "111.11",
+          "12.41x",
+          "-"
+        ],
+        [
+          "车车保险",
+          "USD 0.47",
+          "-4.9%",
+          "431",
+          "-",
+          "-",
+          "-15%",
+          "-7%",
+          "-39%",
+          "4.16",
+          "0.06x",
+          "-"
+        ]
+      ]
+    },
+    {
+      "name": "电商金融平台",
+      "isIndex": false,
+      "header": [
+        "电商金融平台",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Sea",
+          "USD 82.94",
+          "-3.2%",
+          "2,864,161",
+          "-",
+          "-",
+          "-8%",
+          "-5%",
+          "-26%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "MercadoLibre",
+          "USD 1,589.60",
+          "-1.3%",
+          "9,458,028",
+          "-",
+          "-",
+          "+0%",
+          "-2%",
+          "-10%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Rakuten",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "639.79",
+          "0.71x",
+          "Y"
+        ],
+        [
+          "Coupang",
+          "USD 16.82",
+          "-2.5%",
+          "6,524,928",
+          "-",
+          "-",
+          "-5%",
+          "-4%",
+          "-20%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Kaspi",
+          "USD 80.56",
+          "+0.0%",
+          "377,354",
+          "-",
+          "-",
+          "+5%",
+          "+0%",
+          "+0%",
+          "136.53",
+          "1.36x",
+          "Y"
+        ],
+        [
+          "Grab",
+          "USD 3.30",
+          "-1.5%",
+          "1,671,669",
+          "-",
+          "-",
+          "-1%",
+          "-2%",
+          "-12%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Goto",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Shopify",
+          "USD 108.24",
+          "-2.0%",
+          "9,565,381",
+          "-",
+          "-",
+          "-3%",
+          "-3%",
+          "-16%",
+          "-",
+          "-",
+          "-"
+        ]
+      ]
+    },
+    {
+      "name": "加密货币",
+      "isIndex": false,
+      "header": [
+        "加密货币",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Circle",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Coinbase",
+          "USD 159.78",
+          "-0.4%",
+          "10,459,974",
+          "-",
+          "-",
+          "+3%",
+          "-1%",
+          "-3%",
+          "-",
+          "-",
+          "Y"
+        ],
+        [
+          "Micro Strategy",
+          "USD 123.97",
+          "+3.2%",
+          "20,836,218",
+          "-",
+          "-",
+          "+18%",
+          "+5%",
+          "+26%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Bullish",
+          "USD 27.21",
+          "-1.1%",
+          "265,020",
+          "-",
+          "-",
+          "+1%",
+          "-2%",
+          "-9%",
+          "14.24",
+          "1.40x",
+          "-"
+        ],
+        [
+          "Bitgo",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Galaxy Digital",
+          "USD 33.36",
+          "+0.3%",
+          "3,016,792",
+          "-",
+          "-",
+          "+6%",
+          "+0%",
+          "+2%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Hyperliquid Strategies",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Bitmine",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "Gemini Space Station",
+          "USD 50.12",
+          "-2.8%",
+          "5,400,000",
+          "-",
+          "-",
+          "-6%",
+          "-4%",
+          "-22%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "灿谷",
+          "USD 0.28",
+          "-2.1%",
+          "1,738",
+          "-",
+          "-",
+          "-3%",
+          "-3%",
+          "-17%",
+          "1.59",
+          "0.72x",
+          "-"
+        ],
+        [
+          "BTC",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "ETH",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ],
+        [
+          "SOL",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "-"
+        ]
+      ]
+    },
+    {
+      "name": "内容娱乐",
+      "isIndex": false,
+      "header": [
+        "内容娱乐",
+        "12-Jun",
+        "Change",
+        "Turnover<br>(USD'000)",
+        "Adj. P/E<br>(2026E)",
+        "Mkt Cap<br>(USD M)",
+        "Price Change<br>(YTD)",
+        "Price Change<br>(L30D)",
+        "Price Change<br>(L365D)",
+        "MA 持有价值<br>(USD M)",
+        "MoC",
+        "模拟仓"
+      ],
+      "rows": [
+        [
+          "Bilibili",
+          "USD 17.86",
+          "-2.7%",
+          "365,045",
+          "-",
+          "-",
+          "-6%",
+          "-4%",
+          "-22%",
+          "713.79",
+          "1.71x",
+          "Y"
+        ],
+        [
+          "TME",
+          "USD 9.22",
+          "-0.4%",
+          "1,856,986",
+          "-",
+          "-",
+          "+3%",
+          "-1%",
+          "-3%",
+          "7,563",
+          "2.16x",
+          "Y"
+        ],
+        [
+          "China Literature",
+          "HKD 23.46",
+          "+1.6%",
+          "20,480,520",
+          "-",
+          "-",
+          "+11%",
+          "+2%",
+          "+13%",
+          "1,730",
+          "1.25x",
+          "Y"
+        ],
+        [
+          "Maoyan Entertainment",
+          "HKD 5.30",
+          "+1.9%",
+          "739,107",
+          "-",
+          "-",
+          "+13%",
+          "+3%",
+          "+15%",
+          "106.33",
+          "0.26x",
+          "Y"
+        ],
+        [
+          "Netflix<span class=\"tpp-mark\">*</span>",
+          "USD 80.34",
+          "-1.1%",
+          "28,394,826",
+          "-",
+          "-",
+          "+1%",
+          "-2%",
+          "-9%",
+          "-",
+          "-",
+          "N"
+        ],
+        [
+          "Disney",
+          "USD 100.04",
+          "-0.3%",
+          "8,275,105",
+          "-",
+          "-",
+          "+4%",
+          "+0%",
+          "-2%",
+          "-",
+          "-",
+          "N"
+        ],
+        [
+          "Sanrio",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "29.78",
+          "0.61x",
+          "Y"
+        ],
+        [
+          "Bandai Namco",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "N"
+        ],
+        [
+          "Round One",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "N"
+        ],
+        [
+          "Cyberagent",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "-",
+          "-",
+          "N"
+        ],
+        [
+          "YG Entertainment",
+          "-",
+          "-",
+          "-",
+          "-",
+          "-",
+          "+0%",
+          "+0%",
+          "+0%",
+          "24.49",
+          "0.83x",
+          "-"
+        ],
+        [
+          "中国儒意",
+          "HKD 1.41",
+          "+5.2%",
+          "7,427,023",
+          "-",
+          "-",
+          "+26%",
+          "+8%",
+          "+42%",
+          "464.81",
+          "1.22x",
+          "-"
+        ]
+      ]
+    }
+  ],
+  "footnotes": [
+    "<strong>Source:</strong> Bloomberg, TIM",
+    "Above data were sourced as at 7:00 am on Jun 12, 2026 (HKT).",
+    "For companies newly listed in 2026, L365D / YTD price changes were marked as n.a. due to data unavailability.",
+    "<span class=\"tpp\">*</span> marks companies in which TPP holds a position (per TIM), e.g. 联易融 (Linklogis), Netflix."
+  ]
+};
+
+let activeGroup = 'finance';
+
+function renderTabs() {
+  const bar = document.getElementById('tabBar');
+  bar.innerHTML = GROUPS.map(g =>
+    '<div class="tab-item' + (g.id === activeGroup ? ' active' : '') + '" data-id="' + g.id + '">' + g.name + '</div>'
+  ).join('');
+  bar.querySelectorAll('.tab-item').forEach(el => {
+    el.addEventListener('click', () => {
+      activeGroup = el.dataset.id;
+      renderTabs();
+      renderContent();
+    });
+  });
+  const accessibleCount = 1;
+  document.getElementById('permBadge').textContent = '可访问 ' + accessibleCount + '/8 组';
+}
+
+
+
+function buildTableHTML(tableObj, tableKey, colgroup) {
+  let html = '<table><colgroup>';
+  colgroup.forEach(function(w) { html += '<col style="width:' + w + '">'; });
+  html += '</colgroup><thead><tr>';
+
+  tableObj.header.forEach(function(h) {
+    html += '<th>' + h + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  tableObj.rows.forEach(function(row) {
+    html += '<tr>';
+    row.forEach(function(cell, ci) {
+      var cls = '';
+      var cellStr = String(cell);
+      if (ci === 2 && cellStr.startsWith('+')) cls = 'up';
+      else if (ci === 2 && cellStr.startsWith('-') && cellStr.length > 1) cls = 'down';
+      else if (cellStr === '-' || cellStr === '') cls = 'na';
+      html += '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + cell + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  return html;
+}
+
+function renderContent() {
+  var main = document.getElementById('mainContent');
+
+  if (activeGroup !== 'finance') {
+    var group = GROUPS.find(function(g) { return g.id === activeGroup; });
+    main.innerHTML = '<div class="empty-state"><div class="empty-icon">\u{1F4CA}</div><p>' + group.name + ' 数据待接入</p><p class="empty-sub">该组的 Watch List 标的清单和行情数据尚未配置</p></div>';
+    return;
+  }
+
+  var html = '';
+  html += '<h1 class="page-title">' + financeData.title + '</h1>';
+  if (financeData.note) html += '<p class="note">' + financeData.note + '</p>';
+  html += '<ul class="bullets">';
+  financeData.bullets.forEach(function(b) { html += '<li>' + b + '</li>'; });
+  html += '</ul>';
+
+  html += buildTableHTML(financeData.indexTable, 'index', financeData.indexColgroup);
+  html += '<div class="section-gap"></div>';
+
+  financeData.tables.forEach(function(t) {
+    var key = t.name.replace(/[^a-zA-Z0-9]/g, '_');
+    html += buildTableHTML(t, key, financeData.industryColgroup);
+    html += '<div class="section-gap"></div>';
+  });
+
+  html += '<div class="footnotes">';
+  html += '<div class="source">' + financeData.footnotes[0] + '</div>';
+  html += '<ol>';
+  financeData.footnotes.slice(1).forEach(function(f) { html += '<li>' + f + '</li>'; });
+  html += '</ol></div>';
+
+  main.innerHTML = html;
+}
+
+renderTabs();
+renderContent();
+
+var d = new Date();
+var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var td = new Date(d);
+td.setDate(td.getDate() - 1);
+if (td.getDay() === 0) td.setDate(td.getDate() - 2);
+if (td.getDay() === 6) td.setDate(td.getDate() - 1);
+document.getElementById('dateLabel').textContent =
+  months[td.getMonth()] + ' ' + td.getDate() + ', ' + td.getFullYear() + ' (T-1)';
+</script>
+</body>
+</html>

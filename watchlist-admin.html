@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Watch List 管理</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,"Helvetica Neue",Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#000;background:#f5f6f7}
+
+.topbar{background:#fff;border-bottom:1px solid #d9d9d9;height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:100}
+.topbar .logo{font-size:18px;font-weight:bold;color:#185FA5;letter-spacing:-0.3px}
+.topbar .logo span{font-weight:normal;font-size:13px;color:#888;margin-left:8px}
+.topbar .user-area{display:flex;align-items:center;gap:12px;font-size:12px;color:#555}
+.topbar .user-avatar{width:28px;height:28px;border-radius:50%;background:#d4380d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold}
+
+.tab-bar{background:#fff;border-bottom:1px solid #d9d9d9;display:flex;align-items:center;padding:0 24px;overflow-x:auto;flex-shrink:0}
+.tab-bar::-webkit-scrollbar{height:0}
+.tab-item{padding:12px 18px;font-size:13px;color:#666;cursor:pointer;border:none;background:none;position:relative;white-space:nowrap;transition:color .15s}
+.tab-item:hover{color:#185FA5}
+.tab-item.active{color:#185FA5;font-weight:600}
+.tab-item.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:#185FA5}
+
+.main{max-width:1100px;margin:0 auto;padding:20px 24px 60px}
+
+/* Section */
+.section-title{font-size:15px;font-weight:bold;margin:20px 0 10px;display:flex;align-items:center;gap:8px}
+.section-title .badge{font-size:11px;font-weight:normal;background:#e8e8e8;color:#555;padding:1px 7px;border-radius:3px}
+
+/* Card */
+.card{background:#fff;border:1px solid #d9d9d9;border-radius:6px;margin-bottom:12px;overflow:hidden}
+.card-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fafafa;border-bottom:1px solid #eee;cursor:pointer;user-select:none}
+.card-header:hover{background:#f0f0f0}
+.card-header .card-name{font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px}
+.card-header .card-name .arrow{font-size:10px;color:#999;transition:transform .2s}
+.card-header .card-name .arrow.collapsed{transform:rotate(-90deg)}
+.card-header .card-actions{display:flex;gap:4px}
+.card-body{padding:0}
+.card-body.collapsed{display:none}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border:1px solid #d9d9d9;border-radius:4px;background:#fff;color:#333;font-size:12px;cursor:pointer;white-space:nowrap;transition:all .15s}
+.btn:hover{border-color:#185FA5;color:#185FA5}
+.btn-primary{background:#185FA5;color:#fff;border-color:#185FA5}
+.btn-primary:hover{background:#1268b5}
+.btn-danger{color:#c00;border-color:#ffa39e}
+.btn-danger:hover{background:#fff1f0;border-color:#c00}
+.btn-sm{padding:2px 7px;font-size:11px}
+
+/* Stock table */
+.stock-table{width:100%;border-collapse:collapse;font-size:12px}
+.stock-table th{background:#f5f5f5;font-weight:600;padding:7px 8px;text-align:left;border-bottom:1px solid #d9d9d9;white-space:nowrap}
+.stock-table td{padding:6px 8px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.stock-table tr:hover td{background:#f9f9f9}
+.stock-table .col-drag{width:30px;text-align:center;cursor:grab;color:#bbb;font-size:14px;user-select:none}
+.stock-table .col-drag:active{cursor:grabbing}
+.stock-table .col-company{min-width:120px}
+.stock-table .col-bbg{min-width:80px}
+.stock-table .col-ma,.stock-table .col-moc{width:80px;text-align:right}
+.stock-table .col-flag{width:50px;text-align:center}
+.stock-table .col-actions{width:70px;text-align:center}
+
+/* Inline editing */
+.editable{cursor:text;padding:2px 4px;border-radius:3px;border:1px solid transparent;min-width:40px;display:inline-block}
+.editable:hover{border-color:#d9d9d9;background:#fff}
+.editable:focus{outline:none;border-color:#185FA5;background:#fff}
+
+/* Flag badges */
+.flag-yes{display:inline-block;background:#e6f7e6;color:#389e0d;font-size:11px;padding:0 5px;border-radius:2px;font-weight:600}
+.flag-no{display:inline-block;background:#f5f5f5;color:#999;font-size:11px;padding:0 5px;border-radius:2px}
+
+/* Empty state */
+.empty-state{text-align:center;padding:30px 20px;color:#aaa}
+.empty-state p{font-size:13px;color:#999;margin-bottom:10px}
+
+/* Toast */
+.toast{position:fixed;top:60px;right:24px;background:#52c41a;color:#fff;padding:8px 16px;border-radius:4px;font-size:13px;z-index:1000;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* Confirm dialog */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.3);z-index:900;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:8px;padding:24px;min-width:320px;max-width:400px;box-shadow:0 6px 20px rgba(0,0,0,.15)}
+.modal h3{font-size:15px;margin-bottom:10px}
+.modal p{font-size:13px;color:#666;margin-bottom:18px}
+.modal .modal-actions{display:flex;justify-content:flex-end;gap:8px}
+
+/* Add form */
+.add-row{display:flex;gap:6px;padding:10px 14px;background:#fafafa;border-top:1px solid #eee;flex-wrap:wrap;align-items:center}
+.add-row input,.add-row select{padding:4px 8px;border:1px solid #d9d9d9;border-radius:4px;font-size:12px;outline:none}
+.add-row input:focus,.add-row select:focus{border-color:#185FA5}
+.add-row input.w-name{width:140px}
+.add-row input.w-bbg{width:90px}
+.add-row input.w-num{width:70px}
+
+/* Index card */
+.index-list{padding:8px 14px}
+.index-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:12px;border-radius:4px;transition:background .15s,box-shadow .15s}
+.index-item:last-child{border-bottom:none}
+.index-item:hover{background:#fafafa}
+.index-item .drag-handle{cursor:grab;color:#bbb;font-size:16px;user-select:none;line-height:1;width:18px;text-align:center;flex-shrink:0}
+.index-item .drag-handle:active{cursor:grabbing}
+.index-item .idx-name{flex:1}
+.index-item .idx-bbg{color:#888;font-size:11px}
+
+/* Drag & Drop styles */
+.dragging{opacity:.4;background:#e6f7ff !important}
+.drag-over-top{box-shadow:0 -2px 0 0 #185FA5}
+.drag-over-bottom{box-shadow:0 2px 0 0 #185FA5}
+.drag-over-card-top{box-shadow:0 -3px 0 0 #185FA5}
+.drag-over-card-bottom{box-shadow:0 3px 0 0 #185FA5}
+.drag-placeholder-row{background:#e6f7ff !important}
+.drag-placeholder-row td{color:#185FA5 !important;font-style:italic}
+
+/* Industry card drag */
+.card[draggable="true"]{position:relative}
+.card .card-header .drag-handle-card{cursor:grab;color:#bbb;font-size:16px;user-select:none;line-height:1;margin-right:2px;flex-shrink:0}
+.card .card-header .drag-handle-card:active{cursor:grabbing}
+
+/* Export */
+.toolbar-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 0;margin-bottom:4px}
+.toolbar-bar .left{display:flex;gap:8px;align-items:center}
+.toolbar-bar .right{display:flex;gap:8px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Watch List 管理<span>后台配置</span></div>
+  <div class="user-area">
+    <span style="font-size:11px;color:#d4380d;font-weight:600">管理员</span>
+    <div class="user-avatar">A</div>
+  </div>
+</div>
+
+<div class="tab-bar" id="tabBar"></div>
+
+<div class="main" id="mainContent"></div>
+
+<div class="toast" id="toast"></div>
+<div id="modalContainer"></div>
+<input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+
+<script>
+// ========== 初始种子数据 ==========
+const SEED_DATA = {
+  finance: {
+    name: '内容金融组',
+    indices: [
+      { name: 'Indxx Global FinTech Thematic Index', bbg: 'IDFINTH Index' },
+      { name: 'Solactive Global FinTech Index', bbg: 'SOLFINTE Index' },
+      { name: 'KBW Nasdaq Financial Technology Index', bbg: 'KFTX Index' },
+      { name: 'NASDAQ Crypto Index', bbg: 'NCI Index' }
+    ],
+    industries: [
+      { name: '电子银行和钱包', stocks: [
+        { company: 'Nubank', bbg: 'NU US', ma: '190.87', moc: '7.86x', tpp: false, simulated: true },
+        { company: 'Rakuten Bank', bbg: '5838 JP', ma: '174.51', moc: '1.76x', tpp: false, simulated: true },
+        { company: 'Kakao Bank', bbg: '323790 KS', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'PayPay', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Chime', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Block', bbg: 'SQ US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Wise', bbg: 'WISE LN', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Remitly', bbg: 'RELY US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Kakao Pay', bbg: '377300 KS', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'PicPay', bbg: 'PIC US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Banco Inter', bbg: 'INTER BZ', ma: '', moc: '', tpp: false, simulated: false }
+      ]},
+      { name: '信贷', stocks: [
+        { company: 'Sofi', bbg: 'SOFI US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Affirm', bbg: 'AFRM US', ma: '92.39', moc: '3.46x', tpp: false, simulated: false },
+        { company: 'Klarna', bbg: '', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Figure Tech', bbg: '', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Upstart', bbg: 'UPST US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Pagaya', bbg: 'PGY US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Rocket Company', bbg: 'RKT US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Dave', bbg: 'DAVE US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Lending Club', bbg: 'LC US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: '联易融', bbg: '9959 HK', ma: '80.96', moc: '2.15x', tpp: true, simulated: false }
+      ]},
+      { name: '券商和交易所', stocks: [
+        { company: 'Schwab', bbg: 'SCHW US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'IBKR', bbg: 'IBKR US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: '中金', bbg: '3908 HK', ma: '82.35', moc: '1.58x', tpp: false, simulated: false },
+        { company: 'Robinhood', bbg: 'HOOD US', ma: '200.65', moc: '1.77x', tpp: false, simulated: true },
+        { company: 'Futu', bbg: 'FUTU US', ma: '2765', moc: '22.47x', tpp: false, simulated: false },
+        { company: 'Tiger', bbg: 'TIGR US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Webull', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'eToro', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'XP', bbg: 'XP US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'LPL', bbg: 'LPLA US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'XTB', bbg: '', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Tradeweb', bbg: 'TW US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'MarketAxess', bbg: 'MKTX US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'ICE', bbg: 'ICE US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'CME', bbg: 'CME US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Nasdaq', bbg: 'NDAQ US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Miami Exchange', bbg: '', ma: '', moc: '', tpp: false, simulated: false }
+      ]},
+      { name: '支付', stocks: [
+        { company: 'Visa', bbg: 'V US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'MasterCard', bbg: 'MA US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'PayPal', bbg: 'PYPL US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Adyen', bbg: 'ADYEN NA', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Shift4', bbg: 'FOUR US', ma: '43.88', moc: '0.48x', tpp: false, simulated: false },
+        { company: 'Toast', bbg: 'TOST US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Fiserv', bbg: 'FI US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Marqeta', bbg: 'MQ US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'dLocal', bbg: 'DLO US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'GMO Payment Gateway', bbg: '3769 JP', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Stone', bbg: 'STNE US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'PagSeguro', bbg: 'PAGS US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Corpay', bbg: 'CPAY US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Global Payment', bbg: 'GPN US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Paymentus', bbg: 'PAY US', ma: '', moc: '', tpp: false, simulated: false }
+      ]},
+      { name: '金融软件/服务商', stocks: [
+        { company: 'Q2 Holdings', bbg: 'QTWO US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'nCino', bbg: 'NCNO US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Navan', bbg: '', ma: '71.98', moc: '1.44x', tpp: false, simulated: true },
+        { company: 'Clearwater', bbg: 'CWAN US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Bill.com', bbg: 'BILL US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Intuit', bbg: 'INTU US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Fico', bbg: 'FICO US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: "S&P", bbg: 'SPGI US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: "Moody's", bbg: 'MCO US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'MSCI', bbg: 'MSCI US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Factset', bbg: 'FDS US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Broadridge', bbg: 'BR US', ma: '', moc: '', tpp: false, simulated: false }
+      ]},
+      { name: '保险', stocks: [
+        { company: 'Oscar Health', bbg: 'OSCR US', ma: '136.19', moc: '1.75x', tpp: false, simulated: false },
+        { company: 'Lemonade', bbg: 'LMND US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Clover Health', bbg: 'CLOV US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Root', bbg: 'ROOT US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Alignment Healthcare', bbg: 'ALHC US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: '众安保险', bbg: '6060 HK', ma: '111.11', moc: '12.41x', tpp: false, simulated: false },
+        { company: '车车保险', bbg: 'CCG US', ma: '4.16', moc: '0.06x', tpp: false, simulated: false }
+      ]},
+      { name: '电商金融平台', stocks: [
+        { company: 'Sea', bbg: 'SE US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'MercadoLibre', bbg: 'MELI US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Rakuten', bbg: '4755 JP', ma: '639.79', moc: '0.71x', tpp: false, simulated: true },
+        { company: 'Coupang', bbg: 'CPNG US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Kaspi', bbg: 'KSPI US', ma: '136.53', moc: '1.36x', tpp: false, simulated: true },
+        { company: 'Grab', bbg: 'GRAB US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Goto', bbg: 'GOTO IJ', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Shopify', bbg: 'SHOP US', ma: '', moc: '', tpp: false, simulated: false }
+      ]},
+      { name: '加密货币', stocks: [
+        { company: 'Circle', bbg: '', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Coinbase', bbg: 'COIN US', ma: '', moc: '', tpp: false, simulated: true },
+        { company: 'Micro Strategy', bbg: 'MSTR US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Bullish', bbg: 'BLLY US', ma: '14.24', moc: '1.40x', tpp: false, simulated: false },
+        { company: 'Bitgo', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Galaxy Digital', bbg: 'GLXY CN', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Hyperliquid Strategies', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Bitmine', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Gemini Space Station', bbg: 'GEMI US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: '灿谷', bbg: 'CANG US', ma: '1.59', moc: '0.72x', tpp: false, simulated: false },
+        { company: 'BTC', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'ETH', bbg: '', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'SOL', bbg: '', ma: '', moc: '', tpp: false, simulated: false }
+      ]},
+      { name: '内容娱乐', stocks: [
+        { company: 'Bilibili', bbg: 'BILI US', ma: '713.79', moc: '1.71x', tpp: false, simulated: true },
+        { company: 'TME', bbg: 'TME US', ma: '7563', moc: '2.16x', tpp: false, simulated: true },
+        { company: 'China Literature', bbg: '772 HK', ma: '1730', moc: '1.25x', tpp: false, simulated: true },
+        { company: 'Maoyan Entertainment', bbg: '1896 HK', ma: '106.33', moc: '0.26x', tpp: false, simulated: true },
+        { company: 'Netflix', bbg: 'NFLX US', ma: '', moc: '', tpp: true, simulated: false },
+        { company: 'Disney', bbg: 'DIS US', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Sanrio', bbg: '8131 JP', ma: '29.78', moc: '0.61x', tpp: false, simulated: true },
+        { company: 'Bandai Namco', bbg: '7832 JP', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Round One', bbg: '4680 JP', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'Cyberagent', bbg: '4751 JP', ma: '', moc: '', tpp: false, simulated: false },
+        { company: 'YG Entertainment', bbg: '122870 KS', ma: '24.49', moc: '0.83x', tpp: false, simulated: false },
+        { company: '中国儒意', bbg: '136 HK', ma: '464.81', moc: '1.22x', tpp: false, simulated: false }
+      ]}
+    ]
+  }
+};
+
+const GROUPS = [
+  { id: 'finance',       name: '内容金融组' },
+  { id: 'retail',        name: '消费零售组' },
+  { id: 'ai',            name: '智能应用投资组' },
+  { id: 'portfolio',     name: '投资组合管理组' },
+  { id: 'overseas',      name: '海外投资组' },
+  { id: 'healthcare',    name: '医疗健康组' },
+  { id: 'entertainment', name: '全球娱乐组' },
+  { id: 'tech',          name: '技术企业组' }
+];
+
+const STORAGE_KEY = 'watchlist_admin_data';
+let activeGroup = 'finance';
+let collapsedSections = {};
+
+// ========== Data Layer ==========
+function loadData() {
+  var stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) {
+    try { return JSON.parse(stored); } catch(e) {}
+  }
+  var data = {};
+  data['finance'] = JSON.parse(JSON.stringify(SEED_DATA.finance));
+  GROUPS.forEach(function(g) {
+    if (g.id !== 'finance') {
+      data[g.id] = { name: g.name, indices: [], industries: [] };
+    }
+  });
+  return data;
+}
+
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(allData));
+  showToast('已保存');
+}
+
+let allData = loadData();
+
+// ========== UI Helpers ==========
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 1500);
+}
+
+function showModal(title, msg, onConfirm) {
+  var c = document.getElementById('modalContainer');
+  c.innerHTML = '<div class="modal-overlay" id="modalOverlay"><div class="modal"><h3>' + title + '</h3><p>' + msg + '</p><div class="modal-actions"><button class="btn" id="modalCancel">取消</button><button class="btn btn-danger" id="modalConfirm">确认删除</button></div></div></div>';
+  document.getElementById('modalCancel').onclick = function() { c.innerHTML = ''; };
+  document.getElementById('modalOverlay').onclick = function(e) { if (e.target === e.currentTarget) c.innerHTML = ''; };
+  document.getElementById('modalConfirm').onclick = function() { onConfirm(); c.innerHTML = ''; };
+}
+
+// ========== Drag & Drop Helpers ==========
+var dragState = null;
+
+function getDragAfterElement(container, y, selector) {
+  var elements = Array.from(container.querySelectorAll(selector + ':not(.dragging)'));
+  var result = null;
+  var offset = Number.NEGATIVE_INFINITY;
+  elements.forEach(function(el) {
+    var box = el.getBoundingClientRect();
+    var mid = box.top + box.height / 2;
+    var dist = y - mid;
+    if (dist < 0 && dist > offset) {
+      offset = dist;
+      result = el;
+    }
+  });
+  return result;
+}
+
+function clearDragClasses() {
+  document.querySelectorAll('.drag-over-top,.drag-over-bottom,.drag-over-card-top,.drag-over-card-bottom').forEach(function(el) {
+    el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-card-top', 'drag-over-card-bottom');
+  });
+}
+
+// ========== Render ==========
+function renderTabs() {
+  var bar = document.getElementById('tabBar');
+  bar.innerHTML = GROUPS.map(function(g) {
+    return '<div class="tab-item' + (g.id === activeGroup ? ' active' : '') + '" data-id="' + g.id + '">' + g.name + '</div>';
+  }).join('');
+  bar.querySelectorAll('.tab-item').forEach(function(el) {
+    el.addEventListener('click', function() {
+      activeGroup = el.dataset.id;
+      renderTabs();
+      renderContent();
+    });
+  });
+}
+
+function getGroupData() {
+  return allData[activeGroup];
+}
+
+function renderContent() {
+  var main = document.getElementById('mainContent');
+  var gd = getGroupData();
+  if (!gd) { main.innerHTML = '<div class="empty-state"><p>该组数据不存在</p></div>'; return; }
+
+  var html = '';
+
+  // Toolbar
+  html += '<div class="toolbar-bar"><div class="left">';
+  html += '<span style="font-weight:600;font-size:14px">' + gd.name + '</span>';
+  var idxCount = (gd.indices || []).length;
+  var indCount = (gd.industries || []).length;
+  var stkCount = 0; (gd.industries || []).forEach(function(ind) { stkCount += (ind.stocks || []).length; });
+  html += '<span style="color:#888;font-size:12px">' + idxCount + ' 个指数 · ' + indCount + ' 个行业 · ' + stkCount + ' 只标的</span>';
+  html += '</div><div class="right">';
+  html += '<button class="btn" id="btnImportExcel">导入 Excel</button>';
+  html += '<button class="btn" id="btnExportExcel">导出 Excel</button>';
+  html += '<button class="btn" id="btnResetSeed">重置为默认值</button>';
+  html += '</div></div>';
+
+  // === Indices Section ===
+  var idxCollapsed = collapsedSections['indices'];
+  html += '<div class="section-title" id="toggleIndices"><span class="arrow' + (idxCollapsed ? ' collapsed' : '') + '">&#9660;</span> 指数 <span class="badge">' + idxCount + '</span></div>';
+  html += '<div class="card"><div class="card-header" id="idxHeader"><span class="card-name">指数列表</span><span class="card-actions"><button class="btn btn-sm btn-primary" id="addIndexBtn">+ 添加指数</button></span></div>';
+  html += '<div class="card-body' + (idxCollapsed ? ' collapsed' : '') + '" id="idxBody">';
+  if (idxCount === 0) {
+    html += '<div class="empty-state"><p>暂无指数，点击上方按钮添加</p></div>';
+  } else {
+    html += '<div class="index-list" id="indexDragContainer">';
+    gd.indices.forEach(function(idx, i) {
+      html += '<div class="index-item" draggable="true" data-drag-type="index" data-drag-idx="' + i + '">';
+      html += '<span class="drag-handle" data-drag-handle="index">&#9776;</span>';
+      html += '<span class="idx-name editable" data-field="idx-name" data-idx="' + i + '">' + idx.name + '</span>';
+      html += '<span class="idx-bbg editable" data-field="idx-bbg" data-idx="' + i + '" style="width:100px">' + (idx.bbg || '-') + '</span>';
+      html += '<button class="btn btn-sm btn-danger" data-del-idx="' + i + '">删除</button>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div>';
+
+  // === Industries Section ===
+  var indCollapsed = collapsedSections['industries'];
+  html += '<div class="section-title" id="toggleIndustries"><span class="arrow' + (indCollapsed ? ' collapsed' : '') + '">&#9660;</span> 行业与标的 <span class="badge">' + indCount + '</span></div>';
+  html += '<div style="margin-bottom:10px"><button class="btn btn-primary" id="addIndustryBtn">+ 添加行业</button></div>';
+
+  html += '<div id="industryDragContainer">';
+  (gd.industries || []).forEach(function(ind, i) {
+    var secCol = collapsedSections['ind_' + i];
+    var stkCnt = (ind.stocks || []).length;
+    html += '<div class="card" draggable="true" data-drag-type="industry" data-drag-ind="' + i + '">';
+    html += '<div class="card-header" data-ind="' + i + '">';
+    html += '<span class="card-name"><span class="drag-handle-card" data-drag-handle="industry">&#9776;</span> <span class="arrow' + (secCol ? ' collapsed' : '') + '">&#9660;</span> <span class="editable" data-field="ind-name" data-ind="' + i + '">' + ind.name + '</span> <span class="badge">' + stkCnt + ' 只</span></span>';
+    html += '<span class="card-actions">';
+    html += '<button class="btn btn-sm btn-danger" data-del-ind="' + i + '">删除行业</button>';
+    html += '</span></div>';
+    html += '<div class="card-body' + (secCol ? ' collapsed' : '') + '" id="indBody_' + i + '">';
+
+    if (stkCnt === 0) {
+      html += '<div class="empty-state"><p>暂无标的</p></div>';
+    } else {
+      html += '<table class="stock-table"><thead><tr>';
+      html += '<th class="col-drag"></th><th class="col-company">公司名</th><th class="col-bbg">BBG 代码</th><th class="col-ma">MA 持有价值<br>(USD M)</th><th class="col-moc">MoC</th><th class="col-flag">TPP</th><th class="col-flag">模拟仓</th><th class="col-actions">操作</th>';
+      html += '</tr></thead><tbody id="stkTbody_' + i + '">';
+      ind.stocks.forEach(function(s, si) {
+        html += '<tr draggable="true" data-drag-type="stock" data-drag-ind="' + i + '" data-drag-stk="' + si + '">';
+        html += '<td class="col-drag" data-drag-handle="stock">&#9776;</td>';
+        html += '<td class="col-company"><span class="editable" data-field="stk-company" data-ind="' + i + '" data-stk="' + si + '">' + s.company + '</span></td>';
+        html += '<td class="col-bbg"><span class="editable" data-field="stk-bbg" data-ind="' + i + '" data-stk="' + si + '">' + (s.bbg || '-') + '</span></td>';
+        html += '<td class="col-ma"><span class="editable" data-field="stk-ma" data-ind="' + i + '" data-stk="' + si + '">' + (s.ma || '-') + '</span></td>';
+        html += '<td class="col-moc"><span class="editable" data-field="stk-moc" data-ind="' + i + '" data-stk="' + si + '">' + (s.moc || '-') + '</span></td>';
+        html += '<td class="col-flag"><span class="' + (s.tpp ? 'flag-yes' : 'flag-no') + '" data-toggle="tpp" data-ind="' + i + '" data-stk="' + si + '" style="cursor:pointer">' + (s.tpp ? 'Y' : 'N') + '</span></td>';
+        html += '<td class="col-flag"><span class="' + (s.simulated ? 'flag-yes' : 'flag-no') + '" data-toggle="simulated" data-ind="' + i + '" data-stk="' + si + '" style="cursor:pointer">' + (s.simulated ? 'Y' : 'N') + '</span></td>';
+        html += '<td class="col-actions"><button class="btn btn-sm btn-danger" data-del-stk="' + i + '_' + si + '">删除</button></td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+    }
+
+    // Add stock form
+    html += '<div class="add-row">';
+    html += '<input type="text" class="w-name" placeholder="公司名" id="newStkCompany_' + i + '">';
+    html += '<input type="text" class="w-bbg" placeholder="BBG 代码" id="newStkBbg_' + i + '">';
+    html += '<input type="text" class="w-num" placeholder="MA" id="newStkMa_' + i + '">';
+    html += '<input type="text" class="w-num" placeholder="MoC" id="newStkMoc_' + i + '">';
+    html += '<select id="newStkTpp_' + i + '"><option value="0">TPP: N</option><option value="1">TPP: Y</option></select>';
+    html += '<select id="newStkSim_' + i + '"><option value="0">模拟仓: N</option><option value="1">模拟仓: Y</option></select>';
+    html += '<button class="btn btn-sm btn-primary" data-add-stk="' + i + '">添加标的</button>';
+    html += '</div>';
+
+    html += '</div></div>';
+  });
+  html += '</div>';
+
+  main.innerHTML = html;
+  bindEvents();
+  bindDragEvents();
+}
+
+// ========== Drag & Drop Binding ==========
+function bindDragEvents() {
+  // --- Index items drag ---
+  var indexContainer = document.getElementById('indexDragContainer');
+  if (indexContainer) {
+    var indexItems = indexContainer.querySelectorAll('.index-item');
+    indexItems.forEach(function(item) {
+      var handle = item.querySelector('[data-drag-handle="index"]');
+
+      item.addEventListener('dragstart', function(e) {
+        if (e.target !== item) return;
+        dragState = { type: 'index', idx: parseInt(item.dataset.dragIdx) };
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+      });
+
+      item.addEventListener('dragend', function() {
+        item.classList.remove('dragging');
+        clearDragClasses();
+        dragState = null;
+      });
+
+      item.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (!dragState || dragState.type !== 'index') return;
+        e.dataTransfer.dropEffect = 'move';
+        clearDragClasses();
+        var rect = item.getBoundingClientRect();
+        var mid = rect.top + rect.height / 2;
+        if (e.clientY < mid) {
+          item.classList.add('drag-over-top');
+        } else {
+          item.classList.add('drag-over-bottom');
+        }
+      });
+
+      item.addEventListener('dragleave', function() {
+        item.classList.remove('drag-over-top', 'drag-over-bottom');
+      });
+
+      item.addEventListener('drop', function(e) {
+        e.preventDefault();
+        if (!dragState || dragState.type !== 'index') return;
+        var fromIdx = dragState.idx;
+        var toIdx = parseInt(item.dataset.dragIdx);
+        if (fromIdx === toIdx) return;
+
+        var arr = getGroupData().indices;
+        var rect = item.getBoundingClientRect();
+        var mid = rect.top + rect.height / 2;
+        var insertAfter = e.clientY >= mid;
+
+        // Move the item
+        var moved = arr.splice(fromIdx, 1)[0];
+        var newToIdx = insertAfter ? toIdx : toIdx;
+        if (fromIdx < toIdx) newToIdx = insertAfter ? toIdx : toIdx - 1;
+        else newToIdx = insertAfter ? toIdx + 1 : toIdx;
+        arr.splice(newToIdx > arr.length ? arr.length : newToIdx, 0, moved);
+
+        clearDragClasses();
+        dragState = null;
+        saveData();
+        renderContent();
+      });
+    });
+  }
+
+  // --- Industry cards drag ---
+  var indContainer = document.getElementById('industryDragContainer');
+  if (indContainer) {
+    var cards = indContainer.querySelectorAll('.card[data-drag-type="industry"]');
+    cards.forEach(function(card) {
+      var handle = card.querySelector('[data-drag-handle="industry"]');
+
+      card.addEventListener('dragstart', function(e) {
+        // Only drag from handle
+        if (!e.target.closest('[data-drag-handle="industry"]') && e.target !== card) return;
+        dragState = { type: 'industry', idx: parseInt(card.dataset.dragInd) };
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+      });
+
+      card.addEventListener('dragend', function() {
+        card.classList.remove('dragging');
+        clearDragClasses();
+        dragState = null;
+      });
+
+      card.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (!dragState || dragState.type !== 'industry') return;
+        e.dataTransfer.dropEffect = 'move';
+        clearDragClasses();
+        var header = card.querySelector('.card-header');
+        var rect = header.getBoundingClientRect();
+        var mid = rect.top + rect.height / 2;
+        if (e.clientY < mid) {
+          card.classList.add('drag-over-card-top');
+        } else {
+          card.classList.add('drag-over-card-bottom');
+        }
+      });
+
+      card.addEventListener('dragleave', function() {
+        card.classList.remove('drag-over-card-top', 'drag-over-card-bottom');
+      });
+
+      card.addEventListener('drop', function(e) {
+        e.preventDefault();
+        if (!dragState || dragState.type !== 'industry') return;
+        var fromIdx = dragState.idx;
+        var toIdx = parseInt(card.dataset.dragInd);
+        if (fromIdx === toIdx) return;
+
+        var arr = getGroupData().industries;
+        var header = card.querySelector('.card-header');
+        var rect = header.getBoundingClientRect();
+        var mid = rect.top + rect.height / 2;
+        var insertAfter = e.clientY >= mid;
+
+        var moved = arr.splice(fromIdx, 1)[0];
+        var newToIdx;
+        if (fromIdx < toIdx) newToIdx = insertAfter ? toIdx : toIdx - 1;
+        else newToIdx = insertAfter ? toIdx + 1 : toIdx;
+        arr.splice(newToIdx > arr.length ? arr.length : newToIdx, 0, moved);
+
+        clearDragClasses();
+        dragState = null;
+        saveData();
+        renderContent();
+      });
+    });
+  }
+
+  // --- Stock rows drag ---
+  (getGroupData().industries || []).forEach(function(ind, i) {
+    var tbody = document.getElementById('stkTbody_' + i);
+    if (!tbody) return;
+
+    var rows = tbody.querySelectorAll('tr[data-drag-type="stock"]');
+    rows.forEach(function(row) {
+      row.addEventListener('dragstart', function(e) {
+        if (!e.target.closest('[data-drag-handle="stock"]') && e.target !== row) return;
+        dragState = { type: 'stock', ind: i, stk: parseInt(row.dataset.dragStk) };
+        row.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+      });
+
+      row.addEventListener('dragend', function() {
+        row.classList.remove('dragging');
+        clearDragClasses();
+        dragState = null;
+      });
+
+      row.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (!dragState || dragState.type !== 'stock' || dragState.ind !== i) return;
+        e.dataTransfer.dropEffect = 'move';
+        clearDragClasses();
+        var rect = row.getBoundingClientRect();
+        var mid = rect.top + rect.height / 2;
+        if (e.clientY < mid) {
+          row.classList.add('drag-over-top');
+        } else {
+          row.classList.add('drag-over-bottom');
+        }
+      });
+
+      row.addEventListener('dragleave', function() {
+        row.classList.remove('drag-over-top', 'drag-over-bottom');
+      });
+
+      row.addEventListener('drop', function(e) {
+        e.preventDefault();
+        if (!dragState || dragState.type !== 'stock' || dragState.ind !== i) return;
+        var fromStk = dragState.stk;
+        var toStk = parseInt(row.dataset.dragStk);
+        if (fromStk === toStk) return;
+
+        var arr = getGroupData().industries[i].stocks;
+        var rect = row.getBoundingClientRect();
+        var mid = rect.top + rect.height / 2;
+        var insertAfter = e.clientY >= mid;
+
+        var moved = arr.splice(fromStk, 1)[0];
+        var newToIdx;
+        if (fromStk < toStk) newToIdx = insertAfter ? toStk : toStk - 1;
+        else newToIdx = insertAfter ? toStk + 1 : toStk;
+        arr.splice(newToIdx > arr.length ? arr.length : newToIdx, 0, moved);
+
+        clearDragClasses();
+        dragState = null;
+        saveData();
+        renderContent();
+      });
+    });
+  });
+}
+
+// ========== Event Binding ==========
+function bindEvents() {
+  // Toggle sections
+  var toggleIdx = document.getElementById('toggleIndices');
+  if (toggleIdx) toggleIdx.onclick = function() {
+    collapsedSections['indices'] = !collapsedSections['indices'];
+    renderContent();
+  };
+  var toggleInd = document.getElementById('toggleIndustries');
+  if (toggleInd) toggleInd.onclick = function() {
+    collapsedSections['industries'] = !collapsedSections['industries'];
+    renderContent();
+  };
+
+  // Card collapse
+  document.querySelectorAll('.card-header[data-ind]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      if (e.target.closest('.card-actions') || e.target.closest('.editable') || e.target.closest('.drag-handle-card')) return;
+      var ind = parseInt(el.dataset.ind);
+      collapsedSections['ind_' + ind] = !collapsedSections['ind_' + ind];
+      renderContent();
+    });
+  });
+
+  // Add index
+  var addIdxBtn = document.getElementById('addIndexBtn');
+  if (addIdxBtn) addIdxBtn.onclick = function() {
+    var name = prompt('指数名称:');
+    if (!name) return;
+    var bbg = prompt('BBG 代码（可选）:', '') || '';
+    getGroupData().indices.push({ name: name, bbg: bbg });
+    saveData(); renderContent();
+  };
+
+  // Delete index
+  document.querySelectorAll('[data-del-idx]').forEach(function(btn) {
+    btn.onclick = function() {
+      var i = parseInt(btn.dataset.delIdx);
+      var name = getGroupData().indices[i].name;
+      showModal('删除指数', '确认删除指数 "' + name + '"？', function() {
+        getGroupData().indices.splice(i, 1);
+        saveData(); renderContent();
+      });
+    };
+  });
+
+  // Add industry
+  var addIndBtn = document.getElementById('addIndustryBtn');
+  if (addIndBtn) addIndBtn.onclick = function() {
+    var name = prompt('行业名称:');
+    if (!name) return;
+    getGroupData().industries.push({ name: name, stocks: [] });
+    saveData(); renderContent();
+  };
+
+  // Delete industry
+  document.querySelectorAll('[data-del-ind]').forEach(function(btn) {
+    btn.onclick = function() {
+      var i = parseInt(btn.dataset.delInd);
+      var name = getGroupData().industries[i].name;
+      var stkCnt = getGroupData().industries[i].stocks.length;
+      showModal('删除行业', '确认删除行业 "' + name + '"（含 ' + stkCnt + ' 只标的）？', function() {
+        getGroupData().industries.splice(i, 1);
+        saveData(); renderContent();
+      });
+    };
+  });
+
+  // Add stock
+  document.querySelectorAll('[data-add-stk]').forEach(function(btn) {
+    btn.onclick = function() {
+      var i = parseInt(btn.dataset.addStk);
+      var company = document.getElementById('newStkCompany_' + i).value.trim();
+      if (!company) { showToast('请输入公司名'); return; }
+      var bbg = document.getElementById('newStkBbg_' + i).value.trim();
+      var ma = document.getElementById('newStkMa_' + i).value.trim();
+      var moc = document.getElementById('newStkMoc_' + i).value.trim();
+      var tpp = document.getElementById('newStkTpp_' + i).value === '1';
+      var sim = document.getElementById('newStkSim_' + i).value === '1';
+      getGroupData().industries[i].stocks.push({ company: company, bbg: bbg, ma: ma, moc: moc, tpp: tpp, simulated: sim });
+      saveData(); renderContent();
+    };
+  });
+
+  // Delete stock
+  document.querySelectorAll('[data-del-stk]').forEach(function(btn) {
+    btn.onclick = function() {
+      var parts = btn.dataset.delStk.split('_');
+      var ind = parseInt(parts[0]);
+      var si = parseInt(parts[1]);
+      var name = getGroupData().industries[ind].stocks[si].company;
+      showModal('删除标的', '确认删除 "' + name + '"？', function() {
+        getGroupData().industries[ind].stocks.splice(si, 1);
+        saveData(); renderContent();
+      });
+    };
+  });
+
+  // Toggle TPP / Simulated flags
+  document.querySelectorAll('[data-toggle]').forEach(function(el) {
+    el.onclick = function() {
+      var ind = parseInt(el.dataset.ind);
+      var si = parseInt(el.dataset.stk);
+      var field = el.dataset.toggle;
+      getGroupData().industries[ind].stocks[si][field] = !getGroupData().industries[ind].stocks[si][field];
+      saveData(); renderContent();
+    };
+  });
+
+  // Inline editing - blur saves
+  document.querySelectorAll('.editable').forEach(function(el) {
+    el.setAttribute('contenteditable', 'true');
+    el.addEventListener('blur', function() {
+      var val = el.textContent.trim();
+      if (val === '-') val = '';
+      var field = el.dataset.field;
+
+      if (field === 'idx-name') {
+        var i = parseInt(el.dataset.idx);
+        if (val && getGroupData().indices[i]) { getGroupData().indices[i].name = val; saveData(); }
+      } else if (field === 'idx-bbg') {
+        var i = parseInt(el.dataset.idx);
+        if (getGroupData().indices[i]) { getGroupData().indices[i].bbg = val; saveData(); }
+      } else if (field === 'ind-name') {
+        var i = parseInt(el.dataset.ind);
+        if (val && getGroupData().industries[i]) { getGroupData().industries[i].name = val; saveData(); }
+      } else if (field && field.startsWith('stk-')) {
+        var ind = parseInt(el.dataset.ind);
+        var si = parseInt(el.dataset.stk);
+        var stk = getGroupData().industries[ind] && getGroupData().industries[ind].stocks[si];
+        if (stk) {
+          var key = field.replace('stk-', '');
+          if (key === 'company') { if (val) stk.company = val; }
+          else { stk[key] = val; }
+          saveData();
+        }
+      }
+    });
+    el.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+    });
+  });
+
+  // Reset to default
+  var resetBtn = document.getElementById('btnResetSeed');
+  if (resetBtn) resetBtn.onclick = function() {
+    showModal('重置数据', '确认重置为默认值？当前所有修改将丢失。', function() {
+      allData = {};
+      allData['finance'] = JSON.parse(JSON.stringify(SEED_DATA.finance));
+      GROUPS.forEach(function(g) {
+        if (g.id !== 'finance') allData[g.id] = { name: g.name, indices: [], industries: [] };
+      });
+      saveData(); renderContent();
+    });
+  };
+
+  // Export Excel
+  var exportBtn = document.getElementById('btnExportExcel');
+  if (exportBtn) exportBtn.onclick = function() {
+    exportToExcel();
+  };
+
+  // Import Excel
+  var importBtn = document.getElementById('btnImportExcel');
+  if (importBtn) importBtn.onclick = function() {
+    document.getElementById('fileInput').click();
+  };
+  var fileInput = document.getElementById('fileInput');
+  if (fileInput) fileInput.onchange = function(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    importFromExcel(file);
+    e.target.value = '';
+  };
+}
+
+// ========== Excel Import/Export ==========
+function exportToExcel() {
+  var gd = getGroupData();
+  if (!gd) { showToast('无数据可导出'); return; }
+
+  var rows = [];
+
+  // Indices section
+  rows.push(['【指数】']);
+  (gd.indices || []).forEach(function(idx) {
+    rows.push([idx.name, idx.bbg || '']);
+  });
+  rows.push([]); // blank row
+
+  // Header row
+  rows.push(['BBG代码', '公司名称', 'MA持有价值', 'MoC', 'TPP持仓', '模拟仓']);
+
+  // Industries
+  (gd.industries || []).forEach(function(ind) {
+    rows.push(['【' + ind.name + '】']);
+    (ind.stocks || []).forEach(function(s) {
+      rows.push([
+        s.bbg || '',
+        s.company || '',
+        s.ma || '',
+        s.moc || '',
+        s.tpp ? 'Y' : '',
+        s.simulated ? 'Y' : ''
+      ]);
+    });
+    rows.push([]); // blank row between industries
+  });
+
+  // Create workbook
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Set column widths
+  ws['!cols'] = [
+    { wch: 22 },  // A: BBG代码 / 指数名
+    { wch: 26 },  // B: 公司名称 / BBG代码
+    { wch: 14 },  // C: MA持有价值
+    { wch: 10 },  // D: MoC
+    { wch: 10 },  // E: TPP持仓
+    { wch: 10 }   // F: 模拟仓
+  ];
+
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, gd.name || 'Sheet1');
+  XLSX.writeFile(wb, (gd.name || 'watchlist') + '.xlsx');
+  showToast('已导出 ' + gd.name + '.xlsx');
+}
+
+function importFromExcel(file) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array' });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      var gd = getGroupData();
+      var newIndices = [];
+      var newIndustries = [];
+      var currentIndustry = null;
+      var pastHeader = false;
+
+      for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        if (!row || row.length === 0) continue;
+
+        var cellA = String(row[0] || '').trim();
+
+        // Index section: 【指数】
+        if (cellA === '【指数】') {
+          pastHeader = false;
+          continue;
+        }
+
+        // If we're in the indices section (before the header row)
+        if (!pastHeader && cellA && !cellA.startsWith('【')) {
+          // Check if this is the header row
+          if (cellA === 'BBG代码' || cellA === 'BBG代码') {
+            pastHeader = true;
+            continue;
+          }
+          // It's an index row: [name, bbg]
+          newIndices.push({
+            name: cellA,
+            bbg: String(row[1] || '').trim()
+          });
+          continue;
+        }
+
+        // Industry section: 【行业名】
+        if (cellA.startsWith('【') && cellA.endsWith('】')) {
+          var indName = cellA.slice(1, -1);
+          currentIndustry = { name: indName, stocks: [] };
+          newIndustries.push(currentIndustry);
+          continue;
+        }
+
+        // Stock row (after header)
+        if (pastHeader && currentIndustry && cellA) {
+          var bbg = cellA;
+          var company = String(row[1] || '').trim();
+          var ma = String(row[2] || '').trim();
+          var moc = String(row[3] || '').trim();
+          var tppStr = String(row[4] || '').trim().toUpperCase();
+          var simStr = String(row[5] || '').trim().toUpperCase();
+          currentIndustry.stocks.push({
+            company: company,
+            bbg: bbg,
+            ma: ma,
+            moc: moc,
+            tpp: tppStr === 'Y',
+            simulated: simStr === 'Y'
+          });
+        }
+      }
+
+      // Update data
+      gd.indices = newIndices;
+      gd.industries = newIndustries;
+      saveData();
+      renderContent();
+      showToast('导入成功：' + newIndices.length + ' 个指数，' + newIndustries.length + ' 个行业');
+    } catch(err) {
+      showToast('导入失败：' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ========== Init ==========
+renderTabs();
+renderContent();
+</script>
+</body>
+</html>
